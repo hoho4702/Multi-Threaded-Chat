@@ -33,7 +33,7 @@ struct sendData
 };
 
 // need mutex
-int s;                                   // socket file descriptor + need mutex
+int s;                                   // socket file descriptor
 int res[C_NUM];                          // recv, send socket
 char nicknames[C_NUM][N_LEN];            // nicknames
 struct sockaddr_in clientAddress[C_NUM]; // clients' addresses. clientAddress[i] == 0 means res[i] is not connected yet (empty space).
@@ -65,8 +65,8 @@ void sig_handler(int signo)
           perror("server shutdown");                         // error in server shutdown
         if (send(res[i], QUIT, BUFSIZ, 0) < 0)               // notify client to close the connection
           perror("warning");
-        pthread_cancel(recvThread_t[i]); // terminate recv thread
         pthread_detach(recvThread_t[i]); // clear the memory of recv thread
+        pthread_cancel(recvThread_t[i]); // terminate recv thread
         close(res[i]);
       }
     }
@@ -79,6 +79,20 @@ void sig_handler(int signo)
     close(s);
     exit(1);
   }
+}
+
+void init(int port_input)
+{
+  signal(SIGINT, sig_handler);
+  pthread_mutex_init(&mutex_lock, NULL); // initialize the mutex_lock
+
+  // initialize the addressLength
+  for (int i = 0; i < C_NUM; i++)
+  {
+    clientAddress[i].sin_port = 0; // u_short sin_port in sockaddr_in structure
+    addressLength[i] = sizeof(clientAddress);
+  }
+  port = port_input; // argv[1] is port input
 }
 
 // make socket
@@ -298,19 +312,7 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  signal(SIGINT, sig_handler);
-
-  // initialize the mutex_lock
-  pthread_mutex_init(&mutex_lock, NULL);
-
-  // initialize the addressLength
-  for (int i = 0; i < C_NUM; i++)
-  {
-    clientAddress[i].sin_port = 0; // u_short sin_port in sockaddr_in structure
-    addressLength[i] = sizeof(clientAddress);
-  }
-  port = atoi(argv[1]); // argv[1] is port input
-
+  init(atoi(argv[1]));
   make_socket();
   bind();
   listen();

@@ -43,6 +43,7 @@ void sig_handler(int signo)
   {
     if (send(s, QUIT, SM_LEN, 0) < 0)
       perror("QUIT"); // error in QUIT
+    printf("%s is disconnected\n", nickname);
     close(s);
     exit(1);
   }
@@ -117,7 +118,7 @@ void *sendThread(void *arg)
     // if equal, then the result of memcmp is 0 .
     if (!memcmp(QUIT, sendBuf, 4) && strlen(sendBuf) == 5)
     {
-      printf("Disconnected\n");
+      printf("%s is disconnected\n", nickname);
       isTerminated = 1;
       // terminate the receive thread when the send thread terminated.
       pthread_cancel(recv_thread);
