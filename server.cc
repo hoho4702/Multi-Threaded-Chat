@@ -65,8 +65,8 @@ void sig_handler(int signo)
           perror("server shutdown");                         // error in server shutdown
         if (send(res[i], QUIT, BUFSIZ, 0) < 0)               // notify client to close the connection
           perror("warning");
-        pthread_cancel(recvThread_t[i]);
-        pthread_detach(recvThread_t[i]);
+        pthread_cancel(recvThread_t[i]); // terminate recv thread
+        pthread_detach(recvThread_t[i]); // clear the memory of recv thread
         close(res[i]);
       }
     }
