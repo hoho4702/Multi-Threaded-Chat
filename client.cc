@@ -12,17 +12,22 @@
 #define N_LEN 30           // maximum nickname len
 #define SM_LEN BUFSIZ - 50 // maximum send message len
 
-char QUIT[] = "QUIT";
+const char QUIT[SM_LEN] = "QUIT";
 
-pthread_mutex_t lock;
-
-int s;                // socket file descriptor
-char sendBuf[SM_LEN]; // send buffer with BUFSIZ
-char *serverIP;       // argv[1] is Server IP input
-u_short port;         // argv[2] is port input
-char *nickname;
-struct sockaddr_in clientAddress;
+int s;                            // socket file descriptor
+char sendBuf[SM_LEN];             // send buffer with BUFSIZ
+char *serverIP;                   // argv[1] is Server IP input
+u_short port;                     // argv[2] is port input
+char *nickname;                   // client's nickname
+struct sockaddr_in clientAddress; // client's address
 int client_len;
+
+pthread_t send_thread; // send thread
+pthread_t recv_thread; // receive thread
+
+int isRecvTerminated = 0;
+int isSendTerminated = 0;
+int isTerminated = 0;
 
 void usage(void)
 {
@@ -30,21 +35,20 @@ void usage(void)
   printf("Example: ./client \"192.168.1.105\" 8080 User1\n");
 }
 
+// when SIGINT signal occurs,
+// send "QUIT" message to server and close the connection
 void sig_handler(int signo)
 {
   if (signo == SIGINT)
   {
-    char quit_message[SM_LEN] = "QUIT";
-    // sprintf(sendBuf, "QUIT");////
-    if (send(s, quit_message, SM_LEN, 0) < 0)
-    {
-      perror("QUIT"); // error in sending
-    }
+    if (send(s, QUIT, SM_LEN, 0) < 0)
+      perror("QUIT"); // error in QUIT
     close(s);
     exit(1);
   }
 }
 
+// make socket
 void make_socket(void)
 {
   s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP); // SOCK_STREAM, IPPROTO_TCP come together in TCP
@@ -68,27 +72,37 @@ void connectNsendName(void)
     exit(1);
   }
 
-  if (send(s, nickname, N_LEN, 0) < 0)
+  printf("Connection Success\n");
+  if (send(s, nickname, N_LEN, 0) < 0) // send client's nickname to server
   {
-    perror("send nickname"); // error in sending
+    perror("send nickname"); // error in sending nickname
   }
 }
 
+// receive message and print it in client's screen Thread
 void *recvThread(void *arg)
 {
   char message[BUFSIZ];
   while (true)
   {
-    memset(message, 0x00, BUFSIZ);
+    memset(message, 0x00, BUFSIZ); // clear the buffer
     if (recv(s, message, BUFSIZ, 0) < 0)
-    {
       perror("recv");
+
+    if (!memcmp(QUIT, message, 4) && (strlen(message) == 5 || strlen(message) == 4))
+    {
+      // terminate the send thread when the receive thread terminated.
+      isTerminated = 1;
+      pthread_cancel(send_thread);
+      break;
     }
     printf("%s", message);
   }
   return 0;
 }
 
+// receive send message from stdin, and send it to server
+// if the send message is equal to "QUIT", then this thread would be terminated
 void *sendThread(void *arg)
 {
   while (true)
@@ -99,12 +113,14 @@ void *sendThread(void *arg)
     {
       perror("send"); // error in sending
     }
-
     // check whether send msg is equal to "QUIT" or not
     // if equal, then the result of memcmp is 0 .
-    if (!memcmp(QUIT, sendBuf, 4))
+    if (!memcmp(QUIT, sendBuf, 4) && strlen(sendBuf) == 5)
     {
       printf("Disconnected\n");
+      isTerminated = 1;
+      // terminate the receive thread when the send thread terminated.
+      pthread_cancel(recv_thread);
       break;
     }
   }
@@ -123,21 +139,25 @@ int main(int argc, char **argv)
 
   serverIP = argv[1];   // argv[1] is Server IP input
   port = atoi(argv[2]); // argv[2] is port input
-  nickname = argv[3];
+  nickname = argv[3];   // argv[3] is client's nickname
   client_len = sizeof(clientAddress);
 
-  pthread_t send_thread;
-  pthread_t recv_thread;
   int result;
 
   make_socket();
   connectNsendName();
 
-  pthread_create(&recv_thread, NULL, recvThread, NULL);
-  pthread_create(&send_thread, NULL, sendThread, NULL);
+  pthread_create(&recv_thread, NULL, recvThread, NULL); // start receive tread
+  pthread_create(&send_thread, NULL, sendThread, NULL); // start send thread
 
-  // pthread_join(send_thread, (void *)&result);
-  pthread_join(send_thread, (void **)&result);
+  // clear the memory when the threads terminated
+  // not to recv or send bad file descriptor
+  pthread_detach(recv_thread);
+  pthread_detach(send_thread);
+
+  // wait until the receive and send thread terminated.
+  while (!isTerminated)
+    ;
 
   close(s); // close the socket file descriptor
   return 0;
