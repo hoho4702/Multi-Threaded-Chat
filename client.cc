@@ -151,7 +151,7 @@ int main(int argc, char **argv)
   pthread_create(&send_thread, NULL, sendThread, NULL); // start send thread
 
   // clear the memory when the threads terminated
-  // not to recv or send bad file descriptor
+  // not to recv or send with bad file descriptor
   pthread_detach(recv_thread);
   pthread_detach(send_thread);
 
